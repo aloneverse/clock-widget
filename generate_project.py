@@ -32,28 +32,66 @@ F["gradle.properties"] = r'''org.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
 android.nonTransitiveRClass=true
 '''
 
-F["app/build.gradle.kts"] = r'''plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
+F["app/build.gradle"] = r'''plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
 }
 
 android {
-    namespace = "com.aloneverse.clockwidget"
-    compileSdk = 34
+    namespace 'com.aloneverse.clockwidget'
+    compileSdk 34
 
     defaultConfig {
-        applicationId = "com.aloneverse.clockwidget"
-        minSdk = 26
-        targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        applicationId 'com.aloneverse.clockwidget'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
+
     kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+'''
+
+F["app/src/main/AndroidManifest.xml"] = r'''<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <queries>
+        <package android:name="com.google.android.deskclock" />
+        <package android:name="com.android.deskclock" />
+        <package android:name="com.sec.android.app.clockpackage" />
+        <package android:name="com.oneplus.deskclock" />
+        <package android:name="com.coloros.alarmclock" />
+        <package android:name="com.oplus.alarmclock" />
+        <package android:name="com.android.BBKClock" />
+        <intent>
+            <action android:name="android.intent.action.SHOW_ALARMS" />
+        </intent>
+    </queries>
+
+    <application
+        android:allowBackup="true"
+        android:label="@string/app_name"
+        android:theme="@android:style/Theme.DeviceDefault.Light">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
@@ -86,6 +124,8 @@ import android.widget.TextView
 class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val tv = TextView(this)
+        tv.text = "Clock Widget installed ✅\n\nHome screen pe khali jagah long press karo → Widgets → \"Clock Widget\" select karo."
         tv.textSize = 18f
         tv.setPadding(48, 120, 48, 48)
         setContentView(tv)
@@ -119,6 +159,10 @@ import java.util.Locale
 class ClockWidget : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
+        update(context)
+        schedule(context)
+    }
+
     override fun onEnabled(context: Context) {
         schedule(context)
     }
@@ -152,6 +196,21 @@ class ClockWidget : AppWidgetProvider() {
             "com.oneplus.deskclock",
             "com.coloros.alarmclock",
             "com.oplus.alarmclock",
+            "com.android.BBKClock"
+        )
+
+        private fun tickIntent(ctx: Context): PendingIntent {
+            val i = Intent(ctx, ClockWidget::class.java).setAction(ACTION_TICK)
+            return PendingIntent.getBroadcast(
+                ctx, 1, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
+
+        fun schedule(ctx: Context) {
+            val am = ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val next = (System.currentTimeMillis() / 60000L) * 60000L + 60000L
+            val pi = tickIntent(ctx)
+            val canExact = Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()
             if (canExact) {
                 am.setExactAndAllowWhileIdle(AlarmManager.RTC, next, pi)
             } else {
@@ -184,6 +243,23 @@ class ClockWidget : AppWidgetProvider() {
 
             val prefs = ctx.getSharedPreferences("clock_widget", Context.MODE_PRIVATE)
             val now = Date()
+            val is24 = DateFormat.is24HourFormat(ctx)
+            val time = SimpleDateFormat(if (is24) "H:mm" else "h:mm", Locale.getDefault()).format(now)
+            val date = SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(now)
+
+            val lastTime = prefs.getString("time", null)
+            val lastDate = prefs.getString("date", null)
+            var cur = prefs.getInt("cur", 0)
+            val imgIds = intArrayOf(R.id.img0, R.id.img1)
+
+            val views = RemoteViews(ctx.packageName, R.layout.widget_clock)
+
+            if (lastTime == null || lastDate == null || (lastTime == time && lastDate == date)) {
+                // nothing changed: just (re)draw the current frame, no animation
+                views.setImageViewBitmap(imgIds[cur], render(ctx, date, time))
+                views.setDisplayedChild(R.id.flipper, cur)
+            } else {
+                // time changed: old frame fades out, new frame emerges
                 val next = 1 - cur
                 views.setImageViewBitmap(imgIds[cur], render(ctx, lastDate, lastTime))
                 views.setImageViewBitmap(imgIds[next], render(ctx, date, time))
@@ -216,6 +292,14 @@ class ClockWidget : AppWidgetProvider() {
             val timePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 typeface = tf
                 color = textColor
+                textSize = 400f
+            }
+            val ref = "88:88"
+            val rb = Rect()
+            timePaint.getTextBounds(ref, 0, ref.length, rb)
+            if (rb.width() > maxW) {
+                timePaint.textSize = 400f * maxW / rb.width()
+                timePaint.getTextBounds(ref, 0, ref.length, rb)
             }
             val tb = Rect()
             timePaint.getTextBounds(time, 0, time.length, tb)
@@ -280,6 +364,12 @@ F["app/src/main/res/layout/widget_clock.xml"] = r'''<?xml version="1.0" encoding
 
 F["app/src/main/res/anim/widget_in.xml"] = r'''<?xml version="1.0" encoding="utf-8"?>
 <alpha xmlns:android="http://schemas.android.com/apk/res/android"
+    android:fromAlpha="0.0"
+    android:toAlpha="1.0"
+    android:duration="350" />
+'''
+
+F["app/src/main/res/anim/widget_out.xml"] = r'''<?xml version="1.0" encoding="utf-8"?>
 <alpha xmlns:android="http://schemas.android.com/apk/res/android"
     android:fromAlpha="1.0"
     android:toAlpha="0.0"
@@ -323,4 +413,10 @@ try:
     print("font downloaded: Bungee")
 except Exception as e:
     print("WARNING: font download failed, fallback font will be used:", e)
-    
+
+# debug: show the generated app build file in the log
+print("----- app/build.gradle -----")
+with open("app/build.gradle", encoding="utf-8") as fh:
+    for n, line in enumerate(fh, 1):
+        print(n, repr(line.rstrip("\n")))
+        
