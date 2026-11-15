@@ -279,11 +279,11 @@ class ClockWidget : AppWidgetProvider() {
 
         private fun render(ctx: Context, date: String, time: String): Bitmap {
             val tf = try {
-                Typeface.createFromAsset(ctx.assets, "Monoton-Regular.ttf")
+                Typeface.createFromAsset(ctx.assets, "SairaStencilOne-Regular.ttf")
             } catch (e: Exception) {
                 Typeface.DEFAULT_BOLD
             }
-            val textColor = Color.parseColor("#E8F1FF")
+            val textColor = Color.parseColor("#FFFFFF")
             val width = 800
             val maxW = 740f
 
@@ -304,7 +304,7 @@ class ClockWidget : AppWidgetProvider() {
             timePaint.getTextBounds(time, 0, time.length, tb)
 
             val datePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                typeface = Typeface.create("sans-serif", Typeface.BOLD)
                 color = textColor
                 textSize = 64f
                 textAlign = Paint.Align.CENTER
@@ -422,3 +422,16 @@ for path, content in F.items():
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(content)
     print("wrote", path)
+
+# download the clock font (Saira Stencil One, OFL license)
+import urllib.request
+os.makedirs("app/src/main/assets", exist_ok=True)
+try:
+    urllib.request.urlretrieve(
+        "https://github.com/google/fonts/raw/main/ofl/sairastencilone/SairaStencilOne-Regular.ttf",
+        "app/src/main/assets/SairaStencilOne-Regular.ttf",
+    )
+    print("font downloaded")
+except Exception as e:
+    print("WARNING: font download failed, fallback font will be used:", e)
+    
